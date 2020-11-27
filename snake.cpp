@@ -11,7 +11,6 @@ start_posx = 1, start_posy = 1,
 snake_size = 4, snake_size_bot = snake_size;
 
 // Координаты точки - индексы в массиве символов
-
 struct Points {
     int x, y;
 
@@ -52,22 +51,24 @@ Points operator- (Points a, Points b) {
     return { a.x - b.x, a.y - b.y };
 }
 
+typedef vector<Points> ArrPoints;
 
 class Snake {
 public:
     long size, score = 0;
-    vector<Points> segments;
+    ArrPoints segments;
     Points offset = { 1, 0 };
     Points pos;
 
     Snake(int);
-    void start_position(int, int);
+    void start_position();
     void update_offset(int, int);
     void update_position();
     void check_out_of_borders();
     void move();
     int check_food(Points, Points);
     bool check();
+    bool check_conflict(ArrPoints&, int);
 };
 
 
@@ -107,11 +108,11 @@ void show_cursor(bool visibility) {
 char key_pressed();                                                                         // Символ с клавиатуры
 int random(int, int = 0);                                                                   // Рандомное число со смещением
 int key_handler(char, int = 0);                                                             // Обработчик нажатого символа (возвращает смещения x y)                                                   // Проверка на корректность движения
-Points food(int, int, vector<Points>&, int, vector<Points>&, int, Points);                  // Координаты еды
-bool check_food_in_snake(Points, vector<Points>&, int);                                     // Проверка на влезание еды в сегменты змей
-bool check_food(vector<Points>& snake, int, Points);                                        // Проверка на взаимодействие с едой
+Points food(int, int, ArrPoints&, int, ArrPoints&, int, Points);                  // Координаты еды
+bool check_food_in_snake(Points, ArrPoints&, int);                                     // Проверка на влезание еды в сегменты змей
+//bool check_food(vector<Points>& snake, int, Points);                                        // Проверка на взаимодействие с едой
 int set_speed();                                                                            // Установка скорости = задержки
-bool game(int, int, int, int, int);
+bool game(int, int, int);
 int sign(int);
 Points get_offset(int);
 
@@ -121,9 +122,9 @@ Snake::Snake(int size) {
     //start_position(start_pos_x, start_pos_y);
 }
 
-void Snake::start_position(int start_pos_x, int start_pos_y) {
-    for (int x = start_pos_x; x < start_pos_x + snake_size; x++) {
-        segments.push_back({ x, start_pos_y });
+void Snake::start_position() {
+    for (int x = start_posx; x < start_posx + snake_size; x++) {
+        segments.push_back({ x, start_posy });
     }
     pos = segments[size - 1];
 }
@@ -176,6 +177,15 @@ int Snake::check_food(Points foodUser, Points foodBot) {
 bool Snake::check() {
     for (int i = 0; i < size - 1; i++) {
         if (segments[size - 1] == segments[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool Snake::check_conflict(ArrPoints& snakeBot, int size) {
+    for (int i = 0; i < size; ++i) {
+        if (segments[this->size - 1] == snakeBot[i]) {
             return false;
         }
     }
@@ -331,12 +341,12 @@ int main()
 
     bool gameCondition = true;
     while (gameCondition) {
-        gameCondition = game(height, length, start_posx, start_posy, snake_size);
+        gameCondition = game(height, length, snake_size);
     }
     return 0;
 }
 
-bool game(int height, int length, int start_posx, int start_posy, int snake_size) {
+bool game(int height, int length, int snake_size) {
     char** symbols = new char*[height];
     for (int i = 0; i < height; i++) {
         symbols[i] = new char[length];
@@ -354,7 +364,7 @@ bool game(int height, int length, int start_posx, int start_posy, int snake_size
     }
     // Начальное определение змеи
     Snake snakeUser(snake_size);
-    snakeUser.start_position(start_posx, start_posy);
+    snakeUser.start_position();
     // Бот
     SnakeBot snakeBot(snake_size_bot);
     snakeBot.start_position();
@@ -367,8 +377,8 @@ bool game(int height, int length, int start_posx, int start_posy, int snake_size
         symbols[height - 2][x] = '#';
     }
 
-    //int newKoefXBot, newKoefYBot;
     char key;
+    bool is_conflict = false;
 
     Points posFood = food(length, height, snakeUser.segments, snakeUser.size, snakeBot.segments, snakeBot.size, { 0, 0 });
     Points posFoodBot = food(length, height, snakeUser.segments, snakeUser.size, snakeBot.segments, snakeBot.size, posFood);
@@ -411,7 +421,8 @@ bool game(int height, int length, int start_posx, int start_posy, int snake_size
         symbols[snakeUser.pos.y][snakeUser.pos.x] = '#';
         symbols[snakeBot.pos.y][snakeBot.pos.x] = '#';
 
-        if (!snakeUser.check()) {
+        if (!snakeUser.check() || !snakeUser.check_conflict(snakeBot.segments, snakeBot.size)) {
+            is_conflict = true;
             break;
         }
         // Если еда съедена, то боту рассчитываются шаги до новой точки
@@ -428,6 +439,28 @@ bool game(int height, int length, int start_posx, int start_posy, int snake_size
                 snakeBot.set_distance(posFoodBot);
             }
         }
+        /*if (distanceToFoodX == 0 && distanceToFoodY == 0 || checkingBotFood) {
+            auto iter = snakeBot.cbegin();
+            snakeBot.insert(iter, snakeBot[0]);
+            ++snake_size_bot;
+            ++scoreBot;
+            // Если еда в posFood
+            if (checkingBotFood) {
+                posFood = food(length, height);
+                symbols[posFood.y][posFood.x] = '*';
+            }
+            else {
+                FoodBot = food(length, height);
+                symbols[posFoodBot.y][posFoodBot.x] = '*';
+                // Расчет новой дистанции
+                distanceToFoodX = posFoodBot.x - posBot.x;
+                distanceToFoodY = posBot.y - posFoodBot.y;
+
+                //newKoefXBot = sign(distanceToFoodX);
+                //newKoefYBot = sign(distanceToFoodY);
+                koefBot = { sign(distanceToFoodX), sign(distanceToFoodY) };
+            }
+        }*/
         // Если еда съедена, то вставка нового сегмента в конец
         int checkFoodUser = snakeUser.check_food(posFood, posFoodBot);
         if (checkFoodUser) {
@@ -442,7 +475,6 @@ bool game(int height, int length, int start_posx, int start_posy, int snake_size
                 snakeBot.set_distance(posFoodBot);
             }
         }
-        //cout << snakeBot.size;
         // print
         for (int i = 0; i < height; i++) {
             for (int j = 0; j < length; j++) {
@@ -458,31 +490,35 @@ bool game(int height, int length, int start_posx, int start_posy, int snake_size
     }
     delete[] symbols;
 
-    char k = 'q';
     system("cls");
     show_cursor(true);
+
     cout << "Ваш счет >> " << snakeUser.score << " | Счет бота " << snakeBot.score << "\n";
-    if (snakeUser.score > snakeBot.score)
-        cout << "НАЙС НАЙС НАЙС УЛЬТРА ВЕРИ НАЙС";
-    else if (snakeUser.score == snakeBot.score)
-        cout << "Какая жалость";
-    else
-        cout << "Топ 8";
-    cout << "\n\n" << "Для выхода нажмите q, в случае продолжения нажмите любую другую клавишу" << "\n\n";
-    k = key_pressed();
-    return (k != 'q');
+    if (is_conflict)
+        cout << "Ищи ошибки";
+    else {
+        if (snakeUser.score > snakeBot.score)
+            cout << "НАЙС НАЙС НАЙС УЛЬТРА ВЕРИ НАЙС";
+        else if (snakeUser.score == snakeBot.score)
+            cout << "Какая жалость";
+        else
+            cout << "Топ 8";
+    }
+    cout << "\n\n" << "Для выхода нажмите ESC, в случае продолжения нажмите любую другую клавишу" << "\n\n";
+    char k = key_pressed();
+    return (k != 27);
 }
 
 
 
-bool check_food_in_snake(Points food, vector<Points>& snake, int size) {
+bool check_food_in_snake(Points food, ArrPoints& snake, int size) {
     for (int i = 0; i < size; i++)
         if (snake[i] == food)
             return false;
     return true;
 }
 
-Points food(int l, int h, vector<Points>& snake1, int size1, vector<Points>& snake2, int size2, Points food2) {
+Points food(int l, int h, ArrPoints& snake1, int size1, ArrPoints& snake2, int size2, Points food2) {
     Points food;
     do {
         food = { random(l - 2, 1), random(h - 2, 1) };
