@@ -58,7 +58,7 @@ typedef vector<Points> ArrPoints;
 
 class Snake {
 public:
-    long size, score = 0;
+    int size, score = 0;
     ArrPoints segments;
     Points offset = { 1, 0 };
     Points pos;
@@ -76,18 +76,23 @@ public:
 
 
 class SnakeBot : public Snake {
+private:
+    ArrPoints snakeUser;
+    int* snakeUserSize;
+
 public:
     Points distanceToFood;
+    Points distanceToFood2;
 
-    SnakeBot(int);
+    SnakeBot(int, ArrPoints&, int*);
     void start_position();
-    void set_distance(Points);
+    void set_distance(Points, Points);
     void update_position();
-    void def_direction(ArrPoints&, int);
+    void def_direction();
     void update_distance();
     bool check();
-    float concentration_segments(int, int, int, ArrPoints&, int);
-    bool check_segment_on_dist(int, int, ArrPoints&, int);
+    float concentration_segments(int, int, int);
+    bool check_segment_on_dist(int, int);
 };
 
 
@@ -116,6 +121,7 @@ int set_lvl();                                                                  
 bool game();
 int sign(int);
 Points get_offset(int);
+Points min_point(Points, Points);
 
 
 
@@ -196,8 +202,10 @@ bool Snake::check_conflict(ArrPoints& snake, int size) {
 
 
 
-SnakeBot::SnakeBot(int size):Snake(size) {
+SnakeBot::SnakeBot(int size, ArrPoints& snakeUser, int* snakeUserSize):Snake(size) {
     offset = { -1, 0 };
+    this->snakeUser = snakeUser;
+    this->snakeUserSize = snakeUserSize;
 }
 
 void SnakeBot::start_position() {
@@ -215,8 +223,13 @@ bool SnakeBot::check() {
     Snake::check();
 }
 
-void SnakeBot::set_distance(Points food) {
-    distanceToFood = food - pos;
+void SnakeBot::set_distance(Points food1, Points food2) {
+    distanceToFood = food1 - pos;
+    if (lvl > 2) {
+        distanceToFood2 = food2 - pos;
+        distanceToFood = min_point(distanceToFood, distanceToFood2);
+    }
+    //distanceToFood2 = food2 - pos;
     offset = { sign(distanceToFood.x), sign(distanceToFood.y) };
 }
 
@@ -234,7 +247,7 @@ void SnakeBot::update_position() {
         pos.y += offset.y;
 }
 // ERROR
-void SnakeBot::def_direction(ArrPoints& snakeUser, int snakeUserSize) {
+void SnakeBot::def_direction() {
     // Доля от общей длины до еды по кратчайшему пути, которая должна быть свободна
     // дабы не запутаться по этому пути
     float koefDistance = 0.3;
@@ -253,20 +266,20 @@ void SnakeBot::def_direction(ArrPoints& snakeUser, int snakeUserSize) {
         dir = 0;
     }
     segments[size - 1] = pos + offset;
-    cout << check_conflict(snakeUser, snakeUserSize);
-    if (check() && check_segment_on_dist(distWithKoef * koefDistance, dir, snakeUser, snakeUserSize) &&
-        (lvl > 1 || lvl == 1 && check_conflict(snakeUser, snakeUserSize))) {
+    if (check() && check_segment_on_dist(distWithKoef * koefDistance, dir) &&
+        (lvl > 1 || lvl == 1 && check_conflict(snakeUser, *snakeUserSize))) {
         pos += offset;
         return;
     }
+    Points offsetBroken = offset;
  
     // Выбор оптимального пути путем подсчета количества сегментов в 4 областях относительно головы
     // движение туда, где наименьшая концентрация сегментов
     float concentration[4] = { 0, 0, 0, 0 };
-    concentration[0] = concentration_segments(segments[size - 1].x + 1, length - 2, 0, snakeUser, snakeUserSize);
-    concentration[1] = concentration_segments(1, segments[size - 1].x - 1, 0, snakeUser, snakeUserSize);
-    concentration[2] = concentration_segments(segments[size - 1].y + 1, height - 2, 1, snakeUser, snakeUserSize);
-    concentration[3] = concentration_segments(1, segments[size - 1].y - 1, 1, snakeUser, snakeUserSize);
+    concentration[0] = concentration_segments(segments[size - 1].x + 1, length - 2, 0);
+    concentration[1] = concentration_segments(1, segments[size - 1].x - 1, 0);
+    concentration[2] = concentration_segments(segments[size - 1].y + 1, height - 2, 1);
+    concentration[3] = concentration_segments(1, segments[size - 1].y - 1, 1);
     float minimum = concentration[0];
     int indMinimum = 0;
     for (int i = 1; i < 4; ++i) {
@@ -277,26 +290,26 @@ void SnakeBot::def_direction(ArrPoints& snakeUser, int snakeUserSize) {
     }
     offset = get_offset(indMinimum);
     segments[size - 1] = pos + offset;
-    if (check() && (lvl > 1 || lvl == 1 && check_conflict(snakeUser, snakeUserSize))) {
+    if (check() && (lvl > 1 || lvl == 1 && check_conflict(snakeUser, *snakeUserSize))) {
         pos += offset;
         return;
     }
 
     // Простая выборка направления
     for (int tempCounter = 0; tempCounter < 4; ++tempCounter) {
-        if (tempCounter == indMinimum)
-            continue;
         offset = get_offset(tempCounter);
+        if (tempCounter == indMinimum || offset == offsetBroken)
+            continue;
         segments[size - 1] = pos + offset;
 
-        if (check() && (lvl > 1 || lvl == 1 && check_conflict(snakeUser, snakeUserSize))) {
+        if (check() && (lvl > 1 || lvl == 1 && check_conflict(snakeUser, *snakeUserSize))) {
             pos += offset;
             return;
         }
     }
 }
 // 0 - x, 1 - y
-float SnakeBot::concentration_segments(int start, int end, int dir, ArrPoints& snakeUser, int snakeUserSize) {
+float SnakeBot::concentration_segments(int start, int end, int dir) {
     if (start >= end)
         return 1;
     Points compareStart, compareEnd;
@@ -314,7 +327,7 @@ float SnakeBot::concentration_segments(int start, int end, int dir, ArrPoints& s
             ++amountSegments;
     }
     if (lvl == 1) {
-        for (int i = 0; i < snakeUserSize; ++i) {
+        for (int i = 0; i < *snakeUserSize; ++i) {
             if (snakeUser[i] >= compareStart && snakeUser[i] <= compareEnd)
                 ++amountSegments;
         }
@@ -322,7 +335,7 @@ float SnakeBot::concentration_segments(int start, int end, int dir, ArrPoints& s
     return amountSegments / ((compareEnd.x - compareStart.x) * (compareEnd.y - compareStart.y));
 }
 // 0 - x, 1 - y
-bool SnakeBot::check_segment_on_dist(int lim, int dir, ArrPoints& snakeUser, int snakeUserSize) {
+bool SnakeBot::check_segment_on_dist(int lim, int dir) {
     if (!lim)
         return false;
     Points point;
@@ -337,7 +350,7 @@ bool SnakeBot::check_segment_on_dist(int lim, int dir, ArrPoints& snakeUser, int
                 return false;
         }
         if (lvl == 1)
-            for (int i = 0; i < snakeUserSize; ++i) {
+            for (int i = 0; i < *snakeUserSize; ++i) {
                 if (snakeUser[i] >= point && snakeUser[i] <= segments[size - 1])
                     return false;
             }
@@ -348,7 +361,7 @@ bool SnakeBot::check_segment_on_dist(int lim, int dir, ArrPoints& snakeUser, int
                 return false;
         }
         if (lvl == 1)
-            for (int i = 0; i < snakeUserSize; ++i) {
+            for (int i = 0; i < *snakeUserSize; ++i) {
                 if (snakeUser[i] <= point && snakeUser[i] >= segments[size - 1])
                 return false;
             }
@@ -387,14 +400,14 @@ bool game() {
             }
         }
     }
-
+    
     lvl = set_lvl();
 
     // Начальное определение змеи
     Snake snakeUser(snake_size);
     snakeUser.start_position();
     // Бот
-    SnakeBot snakeBot(snake_size_bot);
+    SnakeBot snakeBot(snake_size_bot, snakeUser.segments, &snakeUser.size);
     snakeBot.start_position();
 
     for (int x = start_posx; x < start_posx + snake_size; x++) {
@@ -413,7 +426,7 @@ bool game() {
     symbols[posFood.y][posFood.x] = '*';
     symbols[posFoodBot.y][posFoodBot.x] = '*';
 
-    snakeBot.set_distance(posFoodBot);
+    snakeBot.set_distance(posFoodBot, posFood);
 
     system("cls");
     show_cursor(false);
@@ -424,8 +437,10 @@ bool game() {
 
         if (_kbhit()) {
             key = key_pressed();
-            snakeUser.update_offset(key_handler(key), key_handler(key, 1));
-
+            Points newOffset = { key_handler(key), key_handler(key, 1) };
+            if (!(newOffset.x == -snakeUser.offset.x && newOffset.x != 0 || 
+                newOffset.y == -snakeUser.offset.y && newOffset.y != 0))
+                snakeUser.update_offset(key_handler(key), key_handler(key, 1));
         }
         snakeUser.update_position();
         // Выход за границы 
@@ -439,12 +454,11 @@ bool game() {
         snakeBot.move();
 
         if (!snakeBot.check() || (lvl == 1 && !snakeBot.check_conflict(snakeUser.segments, snakeUser.size))) {
-            snakeBot.def_direction(snakeUser.segments, snakeUser.size);
-            snakeBot.set_distance(posFoodBot);
+            snakeBot.def_direction();
+            snakeBot.set_distance(posFoodBot, posFood);
         }
         else
             snakeBot.update_distance();
-        //cout << snakeUser.offset.x << " " << snakeUser.offset.y;
 
         symbols[snakeUser.pos.y][snakeUser.pos.x] = '#';
         symbols[snakeBot.pos.y][snakeBot.pos.x] = '#';
@@ -454,6 +468,7 @@ bool game() {
             is_conflict = true;
             break;
         }
+
         // Если еда съедена, то боту рассчитываются шаги до новой точки
         int checkFoodUser = snakeUser.check_food(posFood, posFoodBot);
         int checkFoodBot = snakeBot.check_food(posFood, posFoodBot);
@@ -466,8 +481,11 @@ bool game() {
                 posFoodBot = food(length, height, snakeUser.segments, snakeUser.size, snakeBot.segments, snakeBot.size, posFood);
                 symbols[posFoodBot.y][posFoodBot.x] = '*';
                 // Расчет новой дистанции
-                snakeBot.set_distance(posFoodBot);
+                if (lvl <= 2)
+                    snakeBot.set_distance(posFoodBot, posFood);
             }
+            if (lvl > 2)
+                snakeBot.set_distance(posFoodBot, posFood);
         }
         // print
         for (int i = 0; i < height; i++) {
@@ -484,7 +502,6 @@ bool game() {
     }
     delete[] symbols;
 
-    //system("cls");
     show_cursor(true);
 
     cout << "Ваш счет >> " << snakeUser.score << " | Счет бота >> " << snakeBot.score << "\n";
@@ -588,4 +605,10 @@ Points get_offset(int mod) {
     case 3:
         return { 0, -1 };
     }
+}
+
+Points min_point(Points point1, Points point2) {
+    if ((abs(point1.x) + abs(point1.y)) < (abs(point2.x) + abs(point2.y)))
+        return point1;
+    return point2;
 }
